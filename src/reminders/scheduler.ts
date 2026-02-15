@@ -2,7 +2,7 @@ import { toZonedTime } from 'date-fns-tz';
 import { getConfig } from '../config.js';
 import { getLogger } from '../logger.js';
 import { StateManager } from '../state/manager.js';
-import { sendSMS } from './twilio.js';
+import { sendNotification } from './telegram.js';
 import { formatReminderMessage } from './templates.js';
 
 const logger = getLogger();
@@ -37,7 +37,7 @@ export async function checkAndSendReminders(stateManager: StateManager): Promise
   for (const reminder of dueReminders) {
     try {
       const message = formatReminderMessage(reminder);
-      const sid = await sendSMS(message);
+      const sid = await sendNotification(message);
 
       const eventId = reminder.type === 'event' ? reminder.itemId : null;
       const actionItemId = reminder.type === 'action_item' ? reminder.itemId : null;

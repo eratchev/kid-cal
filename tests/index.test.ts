@@ -44,9 +44,9 @@ vi.mock('../src/reminders/scheduler.js', () => ({
   checkAndSendReminders: (...args: unknown[]) => mockCheckAndSendReminders(...args),
 }));
 
-const mockSendSMS = vi.fn();
-vi.mock('../src/reminders/twilio.js', () => ({
-  sendSMS: (...args: unknown[]) => mockSendSMS(...args),
+const mockSendNotification = vi.fn();
+vi.mock('../src/reminders/telegram.js', () => ({
+  sendNotification: (...args: unknown[]) => mockSendNotification(...args),
 }));
 
 vi.mock('../src/state/database.js', () => ({
@@ -228,7 +228,7 @@ describe('processEmails', () => {
       status: 'failed',
       errorMessage: 'Claude extraction returned no parsed output',
     }));
-    expect(mockSendSMS).toHaveBeenCalledWith(expect.stringContaining('Failed to extract'));
+    expect(mockSendNotification).toHaveBeenCalledWith(expect.stringContaining('Failed to extract'));
   });
 
   it('connects when not connected', async () => {

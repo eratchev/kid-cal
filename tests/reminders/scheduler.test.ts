@@ -16,9 +16,9 @@ vi.mock('../../src/logger.js', () => ({
   }),
 }));
 
-const mockSendSMS = vi.fn();
-vi.mock('../../src/reminders/twilio.js', () => ({
-  sendSMS: (...args: unknown[]) => mockSendSMS(...args),
+const mockSendNotification = vi.fn();
+vi.mock('../../src/reminders/telegram.js', () => ({
+  sendNotification: (...args: unknown[]) => mockSendNotification(...args),
 }));
 
 const mockFormatReminderMessage = vi.fn().mockReturnValue('Reminder text');
@@ -69,7 +69,7 @@ describe('checkAndSendReminders', () => {
 
   it('sends reminders when inside window', async () => {
     mockToZonedTime.mockReturnValue({ getHours: () => 8 }); // 8am, inside 7-12 window
-    mockSendSMS.mockResolvedValue('SM123');
+    mockSendNotification.mockResolvedValue('SM123');
 
     const dueReminders: DueReminder[] = [
       {
@@ -87,13 +87,13 @@ describe('checkAndSendReminders', () => {
     const count = await checkAndSendReminders(sm);
 
     expect(count).toBe(1);
-    expect(mockSendSMS).toHaveBeenCalledWith('Reminder text');
+    expect(mockSendNotification).toHaveBeenCalledWith('Reminder text');
     expect(sm.saveReminder).toHaveBeenCalledWith(1, null, 'day_before', 'SM123');
   });
 
   it('handles SMS failure gracefully (continues with remaining)', async () => {
     mockToZonedTime.mockReturnValue({ getHours: () => 9 });
-    mockSendSMS
+    mockSendNotification
       .mockRejectedValueOnce(new Error('Twilio error'))
       .mockResolvedValueOnce('SM456');
 
@@ -123,12 +123,12 @@ describe('checkAndSendReminders', () => {
 
     // First failed, second succeeded
     expect(count).toBe(1);
-    expect(mockSendSMS).toHaveBeenCalledTimes(2);
+    expect(mockSendNotification).toHaveBeenCalledTimes(2);
   });
 
   it('saves action_item reminder with correct IDs', async () => {
     mockToZonedTime.mockReturnValue({ getHours: () => 7 });
-    mockSendSMS.mockResolvedValue('SM789');
+    mockSendNotification.mockResolvedValue('SM789');
 
     const dueReminders: DueReminder[] = [
       {

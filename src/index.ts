@@ -9,7 +9,7 @@ import { isSchoolEmail } from './email/filter.js';
 import { extractFromEmail } from './extraction/extractor.js';
 import { createCalendarEvent, createActionItemReminder } from './calendar/service.js';
 import { checkAndSendReminders } from './reminders/scheduler.js';
-import { sendSMS } from './reminders/twilio.js';
+import { sendNotification } from './reminders/telegram.js';
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
@@ -112,7 +112,7 @@ export async function processEmails(
           'Extraction failed — email saved as failed',
         );
         try {
-          await sendSMS(
+          await sendNotification(
             `⚠️ kid-cal: Failed to extract events from "${parsed.subject}" (${parsed.from}). Check logs.`
           );
         } catch {
@@ -308,7 +308,7 @@ async function main(): Promise<void> {
       // Alert after 3 consecutive IMAP failures
       if (consecutiveImapFailures >= 3) {
         try {
-          await sendSMS(
+          await sendNotification(
             `⚠️ kid-cal: ${consecutiveImapFailures} consecutive IMAP failures. Check credentials and connectivity.`
           );
           consecutiveImapFailures = 0; // Reset only on successful alert

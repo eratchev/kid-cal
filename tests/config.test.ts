@@ -10,10 +10,8 @@ describe('getConfig', () => {
     GOOGLE_SERVICE_ACCOUNT_EMAIL: 'test@project.iam.gserviceaccount.com',
     GOOGLE_PRIVATE_KEY: '-----BEGIN RSA PRIVATE KEY-----\\nfake\\n-----END RSA PRIVATE KEY-----',
     GOOGLE_CALENDAR_ID: 'cal-id',
-    TWILIO_ACCOUNT_SID: 'AC_test',
-    TWILIO_AUTH_TOKEN: 'auth',
-    TWILIO_FROM_NUMBER: '+15551234567',
-    NOTIFICATION_PHONE_NUMBER: '+15559876543',
+    TELEGRAM_BOT_TOKEN: 'test-bot-token',
+    TELEGRAM_CHAT_ID: '123456789',
   };
 
   beforeEach(() => {

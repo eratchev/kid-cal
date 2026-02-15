@@ -23,11 +23,9 @@ const configSchema = z.object({
   GOOGLE_PRIVATE_KEY: z.string().transform((s) => s.replace(/\\n/g, '\n')),
   GOOGLE_CALENDAR_ID: z.string(),
 
-  // Twilio
-  TWILIO_ACCOUNT_SID: z.string(),
-  TWILIO_AUTH_TOKEN: z.string(),
-  TWILIO_FROM_NUMBER: z.string(),
-  NOTIFICATION_PHONE_NUMBER: z.string(),
+  // Telegram
+  TELEGRAM_BOT_TOKEN: z.string(),
+  TELEGRAM_CHAT_ID: z.string(),
 
   // Polling
   POLL_INTERVAL_MINUTES: z.coerce.number().default(5),
