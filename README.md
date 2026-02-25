@@ -55,7 +55,7 @@ sequenceDiagram
 
 ---
 
-## Architecture
+## System Design
 
 ### Email Polling and Filtering
 
