@@ -10,6 +10,10 @@ import type {
 } from '../types.js';
 import { getLogger } from '../logger.js';
 
+function calcDaysUntil(target: Date, now: Date): number {
+  return Math.floor((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 export class StateManager {
   private db: Database.Database;
   private logger = getLogger();
@@ -134,6 +138,20 @@ export class StateManager {
     return false;
   }
 
+  private pushDueReminders(
+    into: DueReminder[],
+    checks: { type: ReminderType; condition: boolean }[],
+    eventId: number | null,
+    actionItemId: number | null,
+    base: Omit<DueReminder, 'reminderType'>,
+  ): void {
+    for (const check of checks) {
+      if (check.condition && !this.isReminderSent(eventId, actionItemId, check.type)) {
+        into.push({ ...base, reminderType: check.type });
+      }
+    }
+  }
+
   saveReminder(
     eventId: number | null,
     actionItemId: number | null,
@@ -190,56 +208,38 @@ export class StateManager {
     // Get events within the next 8 days (covers week_before + buffer)
     const events = this.getUpcomingEvents(8);
     for (const event of events) {
-      const eventDate = new Date(event.start_date);
-      const daysUntil = Math.floor((eventDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-      const checks: { type: ReminderType; condition: boolean }[] = [
-        { type: 'week_before', condition: daysUntil <= 7 && daysUntil > 1 },
-        { type: 'day_before', condition: daysUntil <= 1 && daysUntil > 0 },
-        { type: 'morning_of', condition: daysUntil <= 0 && daysUntil > -1 },
-      ];
-
-      for (const check of checks) {
-        if (check.condition && !this.isReminderSent(event.id, null, check.type)) {
-          reminders.push({
-            type: 'event',
-            reminderType: check.type,
-            itemId: event.id,
-            title: event.title,
-            description: event.description,
-            date: event.start_date,
-            location: event.location,
-          });
-        }
-      }
+      const days = calcDaysUntil(new Date(event.start_date), now);
+      this.pushDueReminders(reminders, [
+        { type: 'week_before', condition: days <= 7 && days > 1 },
+        { type: 'day_before',  condition: days <= 1 && days > 0 },
+        { type: 'morning_of',  condition: days <= 0 && days > -1 },
+      ], event.id, null, {
+        type: 'event',
+        itemId: event.id,
+        title: event.title,
+        description: event.description,
+        date: event.start_date,
+        location: event.location,
+      });
     }
 
     // Get action items within the next 3 days (covers deadline_approaching + buffer)
     const actionItems = this.getUpcomingActionItems(3);
     for (const item of actionItems) {
       if (!item.deadline) continue;
-      const deadlineDate = new Date(item.deadline);
-      const daysUntil = Math.floor((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-      const checks: { type: ReminderType; condition: boolean }[] = [
-        { type: 'deadline_approaching', condition: daysUntil <= 2 && daysUntil > 1 },
-        { type: 'day_before', condition: daysUntil <= 1 && daysUntil > 0 },
-        { type: 'deadline_today', condition: daysUntil <= 0 && daysUntil > -1 },
-      ];
-
-      for (const check of checks) {
-        if (check.condition && !this.isReminderSent(null, item.id, check.type)) {
-          reminders.push({
-            type: 'action_item',
-            reminderType: check.type,
-            itemId: item.id,
-            title: item.title,
-            description: item.description,
-            date: item.deadline,
-            location: null,
-          });
-        }
-      }
+      const days = calcDaysUntil(new Date(item.deadline), now);
+      this.pushDueReminders(reminders, [
+        { type: 'deadline_approaching', condition: days <= 2 && days > 1 },
+        { type: 'day_before',           condition: days <= 1 && days > 0 },
+        { type: 'deadline_today',       condition: days <= 0 && days > -1 },
+      ], null, item.id, {
+        type: 'action_item',
+        itemId: item.id,
+        title: item.title,
+        description: item.description,
+        date: item.deadline,
+        location: null,
+      });
     }
 
     return reminders;
