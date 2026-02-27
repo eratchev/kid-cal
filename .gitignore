@@ -8,3 +8,4 @@ dist/
 .idea/
 .claude/
 coverage/
+.worktrees/
