@@ -37,6 +37,9 @@ export function formatReminderMessage(reminder: DueReminder): string {
     case 'morning_of':
       return `📅 TODAY: ${reminder.title}\n${dateStr}${locationStr}\n${reminder.description}`;
 
+    case 'fifteen_min_before':
+      return `🔔 STARTING SOON: ${reminder.title}\n${dateStr}${locationStr}\n${reminder.description}`;
+
     case 'deadline_approaching':
       return `⚠️ DEADLINE IN 2 DAYS: ${reminder.title}\n${dateStr}\n${reminder.description}`;
 

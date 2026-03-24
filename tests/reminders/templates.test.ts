@@ -102,4 +102,37 @@ describe('formatReminderMessage', () => {
     // Should fall back to raw string
     expect(msg).toContain('not-a-valid-dateT12:00:00');
   });
+
+  it('formats fifteen_min_before reminder with location', () => {
+    const msg = formatReminderMessage({
+      type: 'event',
+      reminderType: 'fifteen_min_before',
+      itemId: 1,
+      title: 'Staff Meeting',
+      description: 'Weekly sync',
+      date: '2026-03-23T14:30:00',
+      location: 'Room 101',
+    });
+    expect(msg).toContain('🔔');
+    expect(msg).toContain('STARTING SOON');
+    expect(msg).toContain('Staff Meeting');
+    expect(msg).toContain('2:30 PM');
+    expect(msg).toContain('📍');
+    expect(msg).toContain('Room 101');
+    expect(msg).toContain('Weekly sync');
+  });
+
+  it('formats fifteen_min_before reminder without location', () => {
+    const msg = formatReminderMessage({
+      type: 'event',
+      reminderType: 'fifteen_min_before',
+      itemId: 1,
+      title: 'Zoom Call',
+      description: 'Parent-teacher conference',
+      date: '2026-03-23T09:00:00',
+      location: null,
+    });
+    expect(msg).toContain('STARTING SOON');
+    expect(msg).not.toContain('📍');
+  });
 });
