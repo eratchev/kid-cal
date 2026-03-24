@@ -12,17 +12,7 @@ export async function checkAndSendReminders(stateManager: StateManager): Promise
   const now = new Date();
   const zonedNow = toZonedTime(now, config.TIMEZONE);
   const currentHour = zonedNow.getHours();
-
-  // Send reminders from the configured morning hour until noon (catch-up window).
-  // This ensures reminders still send if the daemon was offline at exactly MORNING_REMINDER_HOUR.
   const windowEnd = config.MORNING_REMINDER_HOUR + 5; // e.g., 7am–12pm
-  if (currentHour < config.MORNING_REMINDER_HOUR || currentHour >= windowEnd) {
-    logger.debug(
-      { currentHour, morningHour: config.MORNING_REMINDER_HOUR, windowEnd, timezone: config.TIMEZONE },
-      'Outside reminder window, skipping',
-    );
-    return 0;
-  }
 
   const dueReminders = stateManager.getDueReminders(now, config.TIMEZONE);
 
@@ -31,10 +21,32 @@ export async function checkAndSendReminders(stateManager: StateManager): Promise
     return 0;
   }
 
-  logger.info({ count: dueReminders.length }, 'Found due reminders');
+  // fifteen_min_before fires any time of day; all other types are morning-window only
+  const preEventReminders = dueReminders.filter(r => r.reminderType === 'fifteen_min_before');
+  const morningReminders  = dueReminders.filter(r => r.reminderType !== 'fifteen_min_before');
+
+  const withinMorningWindow =
+    currentHour >= config.MORNING_REMINDER_HOUR && currentHour < windowEnd;
+
+  if (!withinMorningWindow && morningReminders.length > 0) {
+    logger.debug(
+      { currentHour, morningHour: config.MORNING_REMINDER_HOUR, windowEnd, count: morningReminders.length },
+      'Outside morning window, skipping morning reminders',
+    );
+  }
+
+  const remindersToSend = withinMorningWindow
+    ? [...preEventReminders, ...morningReminders]
+    : preEventReminders;
+
+  if (remindersToSend.length === 0) {
+    return 0;
+  }
+
+  logger.info({ count: remindersToSend.length }, 'Found due reminders');
 
   let sentCount = 0;
-  for (const reminder of dueReminders) {
+  for (const reminder of remindersToSend) {
     try {
       const message = formatReminderMessage(reminder);
       const sid = await sendNotification(message);

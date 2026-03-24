@@ -48,23 +48,143 @@ describe('checkAndSendReminders', () => {
     vi.clearAllMocks();
   });
 
-  it('returns 0 when outside reminder window (too early)', async () => {
+  it('returns 0 when outside morning window with no pre-event reminders (too early)', async () => {
     mockToZonedTime.mockReturnValue({ getHours: () => 5 }); // 5am, before 7am window
 
-    const sm = makeStateManager();
+    const sm = makeStateManager(); // no due reminders
     const count = await checkAndSendReminders(sm);
 
     expect(count).toBe(0);
-    expect(sm.getDueReminders).not.toHaveBeenCalled();
+    expect(sm.getDueReminders).toHaveBeenCalled(); // always called after refactor
+    expect(mockSendNotification).not.toHaveBeenCalled();
   });
 
-  it('returns 0 when outside reminder window (too late)', async () => {
-    mockToZonedTime.mockReturnValue({ getHours: () => 13 }); // 1pm, after 12pm window
+  it('returns 0 when outside morning window with only morning reminders (too late)', async () => {
+    // hour=13 is past windowEnd (MORNING_REMINDER_HOUR=7, windowEnd=12).
+    // getDueReminders IS called (always now), but the morning_of reminder is filtered out.
+    // count is 0, sendNotification is never called.
+    mockToZonedTime.mockReturnValue({ getHours: () => 13 }); // 1pm, after window ends at noon
 
-    const sm = makeStateManager();
+    const dueReminders: DueReminder[] = [
+      {
+        type: 'event',
+        reminderType: 'morning_of',
+        itemId: 1,
+        title: 'Event',
+        description: '',
+        date: '2026-03-23T09:00:00',
+        location: null,
+      },
+    ];
+
+    const sm = makeStateManager(dueReminders);
     const count = await checkAndSendReminders(sm);
 
     expect(count).toBe(0);
+    expect(sm.getDueReminders).toHaveBeenCalled(); // always called after refactor
+    expect(mockSendNotification).not.toHaveBeenCalled(); // morning_of is skipped outside window
+  });
+
+  it('sends fifteen_min_before reminder outside morning window (3pm)', async () => {
+    mockToZonedTime.mockReturnValue({ getHours: () => 15 }); // 3pm, outside window
+    mockSendNotification.mockResolvedValue('MSG_pre');
+
+    const dueReminders: DueReminder[] = [
+      {
+        type: 'event',
+        reminderType: 'fifteen_min_before',
+        itemId: 10,
+        title: 'Afternoon Meeting',
+        description: 'Weekly sync',
+        date: '2026-03-23T15:10:00',
+        location: null,
+      },
+    ];
+
+    const sm = makeStateManager(dueReminders);
+    const count = await checkAndSendReminders(sm);
+
+    expect(count).toBe(1);
+    expect(mockSendNotification).toHaveBeenCalledOnce();
+    expect(sm.saveReminder).toHaveBeenCalledWith(10, null, 'fifteen_min_before', 'MSG_pre');
+  });
+
+  it('does NOT send morning_of reminder outside morning window (3pm)', async () => {
+    mockToZonedTime.mockReturnValue({ getHours: () => 15 }); // 3pm, outside window
+
+    const dueReminders: DueReminder[] = [
+      {
+        type: 'event',
+        reminderType: 'morning_of',
+        itemId: 11,
+        title: 'Some Event',
+        description: 'Desc',
+        date: '2026-03-23T08:00:00',
+        location: null,
+      },
+    ];
+
+    const sm = makeStateManager(dueReminders);
+    const count = await checkAndSendReminders(sm);
+
+    expect(count).toBe(0);
+    expect(mockSendNotification).not.toHaveBeenCalled();
+  });
+
+  it('sends both morning_of and fifteen_min_before inside morning window (9am)', async () => {
+    mockToZonedTime.mockReturnValue({ getHours: () => 9 }); // 9am, inside window
+    mockSendNotification.mockResolvedValue('MSG_both');
+
+    const dueReminders: DueReminder[] = [
+      {
+        type: 'event',
+        reminderType: 'morning_of',
+        itemId: 20,
+        title: 'Morning Event',
+        description: '',
+        date: '2026-03-23T09:00:00',
+        location: null,
+      },
+      {
+        type: 'event',
+        reminderType: 'fifteen_min_before',
+        itemId: 20,
+        title: 'Morning Event',
+        description: '',
+        date: '2026-03-23T09:00:00',
+        location: null,
+      },
+    ];
+
+    const sm = makeStateManager(dueReminders);
+    const count = await checkAndSendReminders(sm);
+
+    expect(count).toBe(2);
+    expect(mockSendNotification).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends fifteen_min_before at midnight (outside morning window)', async () => {
+    mockToZonedTime.mockReturnValue({ getHours: () => 0 }); // midnight
+
+    mockSendNotification.mockResolvedValue('MSG_midnight');
+
+    const dueReminders: DueReminder[] = [
+      {
+        type: 'event',
+        reminderType: 'fifteen_min_before',
+        itemId: 30,
+        title: 'Late Event',
+        description: '',
+        date: '2026-03-23T00:10:00',
+        location: null,
+      },
+    ];
+
+    const sm = makeStateManager(dueReminders);
+    const count = await checkAndSendReminders(sm);
+
+    expect(count).toBe(1);
+    expect(mockSendNotification).toHaveBeenCalledOnce();
   });
 
   it('sends reminders when inside window', async () => {
