@@ -18,7 +18,8 @@ Reduce alerts per item from up to 4 (events) or 3 (action items) to the minimum 
 
 ### `src/state/manager.ts` — `getDueReminders`
 
-**Events loop:** Remove `week_before` and `day_before` conditions. Keep only `morning_of`:
+**Events loop (day-based batch only — `fifteen_min_before` is a separate pass and is untouched):**
+Remove `week_before` and `day_before` conditions. Keep only `morning_of`:
 
 ```ts
 this.pushDueReminders(reminders, [
@@ -27,6 +28,15 @@ this.pushDueReminders(reminders, [
 ```
 
 Shrink the lookahead from 8 days to 1: `getUpcomingEvents(1)`.
+
+Update the stale comment above the call from:
+```ts
+// Get events within the next 8 days (covers week_before + buffer)
+```
+to:
+```ts
+// Get events within the next day (morning_of only)
+```
 
 **Action items loop:** Remove `deadline_approaching` and `day_before` conditions. Keep only `deadline_today`:
 
@@ -37,6 +47,15 @@ this.pushDueReminders(reminders, [
 ```
 
 Shrink the lookahead from 3 days to 1: `getUpcomingActionItems(1)`.
+
+Update the stale comment above the call from:
+```ts
+// Get action items within the next 3 days (covers deadline_approaching + buffer)
+```
+to:
+```ts
+// Get action items within the next day (deadline_today only)
+```
 
 The `fifteen_min_before` pass is unchanged.
 
@@ -49,9 +68,14 @@ The `fifteen_min_before` pass is unchanged.
 
 ## Tests
 
-- Delete test cases for `week_before`, `day_before` (event), `deadline_approaching`, `day_before` (action item) in `tests/state/manager.test.ts`
-- Add/keep test cases confirming `morning_of` and `deadline_today` still fire
-- Confirm `week_before` and `deadline_approaching` no longer fire
+In `tests/state/manager.test.ts`, inside the `getDueReminders` describe block:
+
+- **Replace** the existing `day_before` event test with a `morning_of` test (same-day event, confirms `morning_of` fires and the reminder fields — title, date, location — are correctly propagated)
+- **Replace** the existing `day_before` / `deadline_approaching` action item test with a `deadline_today` test (same-day deadline, confirms `deadline_today` fires)
+- **Add** a test confirming `week_before` no longer fires for an event 7 days away
+- **Add** a test confirming `deadline_approaching` no longer fires for an action item 2 days away
+
+Do **not** touch the `isReminderSent` / `saveReminder` tests — those use `week_before` and `day_before` directly to test DB persistence, not reminder generation, and remain valid since those values are still in the `ReminderType` union.
 
 ## Files Changed
 
