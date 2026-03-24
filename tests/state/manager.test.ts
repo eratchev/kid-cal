@@ -23,6 +23,11 @@ vi.mock('../../src/logger.js', () => ({
 }));
 
 describe('StateManager', () => {
+  function toLocalISO(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
+
   let db: Database.Database;
   let manager: StateManager;
 
@@ -427,11 +432,6 @@ describe('StateManager', () => {
       });
     });
 
-    function toLocalISO(date: Date): string {
-      const pad = (n: number) => String(n).padStart(2, '0');
-      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-    }
-
     it('returns morning_of reminder for a same-day timed event', () => {
       const now = new Date();
       // 2 hours from now → calcDaysUntil = Math.floor(2/24) = 0, satisfies morning_of
@@ -555,11 +555,6 @@ describe('StateManager', () => {
     // start_date must be local time (YYYY-MM-DDTHH:MM:SS, no timezone suffix) to match the
     // stored format AND the SQL strftime('now', 'localtime') comparison.
     // Do NOT use toISOString() — that returns UTC and will produce wrong comparisons in non-UTC environments.
-    function toLocalISO(date: Date): string {
-      const pad = (n: number) => String(n).padStart(2, '0');
-      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-    }
-
     function insertTimedEvent(minutesFromNow: number): ReturnType<typeof manager.saveEvent> {
       const startDate = toLocalISO(new Date(Date.now() + minutesFromNow * 60_000));
       return manager.saveEvent({
