@@ -305,12 +305,12 @@ async function main(): Promise<void> {
         'Email processing cycle failed',
       );
 
-      // Alert after 3 consecutive IMAP failures
-      if (consecutiveImapFailures >= 3) {
+      // Alert after 8 consecutive IMAP failures
+      if (consecutiveImapFailures >= 8) {
         consecutiveImapFailures = 0;
         try {
           await sendNotification(
-            `⚠️ kid-cal: 3 consecutive IMAP failures. Check credentials and connectivity.`
+            `⚠️ kid-cal: 8 consecutive IMAP failures. Check credentials and connectivity.`
           );
         } catch (alertError) {
           logger.error({ error: alertError }, 'Failed to send IMAP failure alert');
