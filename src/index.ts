@@ -5,7 +5,7 @@ import { runMigrations } from './state/migrations.js';
 import { StateManager } from './state/manager.js';
 import { EmailPoller } from './email/poller.js';
 import { parseEmail } from './email/parser.js';
-import { isSchoolEmail } from './email/filter.js';
+import { isSchoolEmail, isBlockedSubject } from './email/filter.js';
 import { extractFromEmail } from './extraction/extractor.js';
 import { createCalendarEvent, createActionItemReminder } from './calendar/service.js';
 import { checkAndSendReminders } from './reminders/scheduler.js';
@@ -77,6 +77,16 @@ export async function processEmails(
 
       // Filter — skip non-school emails without marking them as read
       if (!isSchoolEmail(parsed)) {
+        skippedNonSchoolIds.add(parsed.messageId);
+        continue;
+      }
+
+      // Filter — skip school emails whose subject matches a blocked keyword
+      if (isBlockedSubject(parsed)) {
+        logger.info(
+          { messageId: parsed.messageId, subject: parsed.subject },
+          'Email skipped (blocked subject keyword)',
+        );
         skippedNonSchoolIds.add(parsed.messageId);
         continue;
       }

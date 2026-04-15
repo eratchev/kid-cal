@@ -25,6 +25,7 @@ vi.mock('../src/email/parser.js', () => ({
 const mockIsSchoolEmail = vi.fn();
 vi.mock('../src/email/filter.js', () => ({
   isSchoolEmail: (...args: unknown[]) => mockIsSchoolEmail(...args),
+  isBlockedSubject: () => false,
 }));
 
 const mockExtractFromEmail = vi.fn();

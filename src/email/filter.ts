@@ -4,6 +4,12 @@ import { getLogger } from '../logger.js';
 
 const logger = getLogger();
 
+export function isBlockedSubject(email: ParsedEmail): boolean {
+  const config = getConfig();
+  const subjectLower = email.subject.toLowerCase();
+  return config.BLOCKED_SUBJECT_KEYWORDS.some((keyword) => subjectLower.includes(keyword));
+}
+
 export function isSchoolEmail(email: ParsedEmail): boolean {
   const config = getConfig();
 

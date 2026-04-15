@@ -44,6 +44,11 @@ const configSchema = z.object({
     s ? s.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean) : []
   ),
 
+  // Subject-line filtering — emails whose subject contains any of these strings are skipped entirely
+  BLOCKED_SUBJECT_KEYWORDS: z.string().default('').transform((s) =>
+    s ? s.split(',').map((k) => k.trim().toLowerCase()).filter(Boolean) : []
+  ),
+
   // Logging
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
 });
