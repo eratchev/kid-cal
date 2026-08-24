@@ -205,8 +205,10 @@ export class StateManager {
   }
 
   getOrphanedActionItems(): StoredActionItem[] {
+    // Items without a deadline never get a calendar event (createActionItemReminder skips
+    // them), so retrying them would never converge.
     return this.db.prepare(
-      'SELECT * FROM action_items WHERE calendar_event_id IS NULL'
+      'SELECT * FROM action_items WHERE calendar_event_id IS NULL AND deadline IS NOT NULL'
     ).all() as StoredActionItem[];
   }
 

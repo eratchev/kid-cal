@@ -283,6 +283,67 @@ describe('StateManager', () => {
     });
   });
 
+  describe('getOrphanedEvents / getOrphanedActionItems', () => {
+    beforeEach(() => {
+      manager.saveProcessedEmail({
+        messageId: 'email-1',
+        from: 'teacher@school.org',
+        subject: 'Test',
+        processedAt: new Date().toISOString(),
+        status: 'success',
+        errorMessage: null,
+        eventCount: 1,
+        actionItemCount: 1,
+      });
+    });
+
+    function addEvent(title: string) {
+      return manager.saveEvent({
+        title,
+        description: 'Test',
+        startDate: '2025-04-15T09:00:00',
+        endDate: null,
+        allDay: false,
+        location: null,
+        sourceEmailId: 'email-1',
+      });
+    }
+
+    function addActionItem(title: string, deadline: string | null) {
+      return manager.saveActionItem({
+        title,
+        description: 'Test',
+        deadline,
+        priority: 'medium',
+        sourceEmailId: 'email-1',
+      });
+    }
+
+    it('returns events that have no calendar event id', () => {
+      const orphan = addEvent('Unsynced');
+      const synced = addEvent('Synced');
+      manager.updateEventCalendarId(synced.id, 'cal-1');
+
+      expect(manager.getOrphanedEvents().map((e) => e.id)).toEqual([orphan.id]);
+    });
+
+    it('returns action items that have a deadline but no calendar event id', () => {
+      const orphan = addActionItem('Unsynced', '2025-04-15');
+      const synced = addActionItem('Synced', '2025-04-16');
+      manager.updateActionItemCalendarId(synced.id, 'cal-2');
+
+      expect(manager.getOrphanedActionItems().map((i) => i.id)).toEqual([orphan.id]);
+    });
+
+    // Deadline-less action items never get a calendar event (createActionItemReminder
+    // skips them), so retrying them every poll cycle would never converge.
+    it('excludes action items without a deadline', () => {
+      addActionItem('No deadline', null);
+
+      expect(manager.getOrphanedActionItems()).toEqual([]);
+    });
+  });
+
   describe('transaction', () => {
     it('commits on success', () => {
       manager.saveProcessedEmail({

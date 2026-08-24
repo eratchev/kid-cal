@@ -1,10 +1,10 @@
 # kid-cal
 
-School email → calendar + SMS reminder daemon.
+School email → calendar + Telegram reminder daemon.
 
 ## Architecture
 
-Yahoo IMAP → EmailPoller → EmailFilter → EmailParser → ClaudeExtractor → StateManager (SQLite) → CalendarService (Google) + ReminderScheduler → TwilioService (SMS)
+Yahoo IMAP → EmailPoller → EmailFilter → EmailParser → ClaudeExtractor → StateManager (SQLite) → CalendarService (Google) + ReminderScheduler → TelegramService
 
 ## Build & Run
 
@@ -23,7 +23,7 @@ npm run logs:errors   # Errors only (level>=50), whole history
 - `src/email/` - IMAP polling, parsing (mailparser + html-to-text), school sender filtering
 - `src/extraction/` - Claude API structured output extraction (events + action items)
 - `src/calendar/` - Google Calendar service account integration
-- `src/reminders/` - Twilio SMS + reminder scheduling
+- `src/reminders/` - Telegram notifications + reminder scheduling
 - `src/state/` - SQLite (better-sqlite3, WAL mode) state management
 
 ## Key Patterns
@@ -33,9 +33,9 @@ npm run logs:errors   # Errors only (level>=50), whole history
 - CamelCase for application-layer types (Extracted*, Parsed*)
 - Deterministic iCalUID for idempotent calendar event creation
 - Read-only IMAP: emails are never marked as read; dedup via DB `processed_emails` table + in-memory cache for non-school emails
-- Orphaned calendar event retry: items with NULL `calendar_event_id` are retried each poll cycle
+- Orphaned calendar event retry: events and deadline-bearing action items with NULL `calendar_event_id` are retried each poll cycle (deadline-less action items never get a calendar event, so they are excluded)
 - Exponential backoff retry (1s, 4s, 16s) for external services
-- SMS alert after 3 consecutive IMAP failures
+- Telegram alert after 8 consecutive IMAP failures
 - Heartbeat file written each poll cycle (`writeHeartbeat`), checked by the external watchdog
 
 ## Daemon (launchd)
