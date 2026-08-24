@@ -95,11 +95,14 @@ export class EmailPoller {
   }
 
   async disconnect(): Promise<void> {
-    if (this.client) {
-      await this.client.logout();
-      this.client = null;
-      this.logger.info('IMAP disconnected');
-    }
+    const client = this.client;
+    if (!client) return;
+
+    // Drop the reference before logging out: on a dead socket logout() throws, and
+    // keeping the stale client would block the next cycle from reconnecting.
+    this.client = null;
+    await client.logout();
+    this.logger.info('IMAP disconnected');
   }
 
   isConnected(): boolean {
