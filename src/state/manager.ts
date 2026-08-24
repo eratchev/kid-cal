@@ -8,7 +8,7 @@ import type {
   ReminderType,
   DueReminder,
 } from '../types.js';
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { getLogger } from '../logger.js';
 
 export class StateManager {
@@ -180,14 +180,15 @@ export class StateManager {
     `).all(day) as StoredActionItem[];
   }
 
-  private getEventsInMinuteWindow(fromMinutes: number, toMinutes: number): StoredEvent[] {
+  /** Timed events whose stored wall-clock start falls between two wall-clock bounds. */
+  private getTimedEventsBetween(fromLocal: string, toLocal: string): StoredEvent[] {
     return this.db.prepare(`
       SELECT * FROM events
       WHERE all_day = 0
-        AND start_date >= strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime', ? || ' minutes')
-        AND start_date <= strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime', ? || ' minutes')
+        AND start_date >= ?
+        AND start_date <= ?
       ORDER BY start_date ASC
-    `).all(fromMinutes, toMinutes) as StoredEvent[];
+    `).all(fromLocal, toLocal) as StoredEvent[];
   }
 
   getEmailSubject(messageId: string): string {
@@ -242,13 +243,22 @@ export class StateManager {
       }, null, item.id);
     }
 
-    // fifteen_min_before: timed events starting within the next 20 min or up to 30 min ago.
-    // The SQL window is a coarse filter; the minutesUntil check is defense-in-depth using
-    // JS Date arithmetic (both use local time via new Date(unzoned string)).
+    // fifteen_min_before: timed events starting within the next 20 min, or up to 30 min ago
+    // so a missed poll cycle still alerts.
+    //
+    // The SQL bounds are only a coarse prefilter, deliberately far wider than the real
+    // window so no candidate can be excluded by a DST shift. minutesUntil is the
+    // authoritative check: fromZonedTime turns the stored wall-clock string into a real
+    // instant in the school's timezone, so the result no longer depends on the host's
+    // timezone — reading it as host-local silently dropped every alert on a UTC host.
     // nowSec truncates sub-second precision to match the second-level resolution of stored start_date strings.
+    const wallClock = (offsetMs: number): string =>
+      formatInTimeZone(new Date(now.getTime() + offsetMs), timezone, "yyyy-MM-dd'T'HH:mm:ss");
+    const PREFILTER_MS = 3 * 60 * 60 * 1000;
     const nowSec = Math.floor(now.getTime() / 1000) * 1000;
-    for (const event of this.getEventsInMinuteWindow(-30, 20)) {
-      const minutesUntil = (new Date(event.start_date).getTime() - nowSec) / 60_000;
+
+    for (const event of this.getTimedEventsBetween(wallClock(-PREFILTER_MS), wallClock(PREFILTER_MS))) {
+      const minutesUntil = (fromZonedTime(event.start_date, timezone).getTime() - nowSec) / 60_000;
       if (minutesUntil < -30 || minutesUntil > 20) continue;
 
       this.pushIfUnsent(reminders, {
