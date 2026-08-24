@@ -34,6 +34,7 @@ npm test          # Run vitest
 - Orphaned calendar event retry: items with NULL `calendar_event_id` are retried each poll cycle
 - Exponential backoff retry (1s, 4s, 16s) for external services
 - SMS alert after 3 consecutive IMAP failures
+- Heartbeat file written each poll cycle (`writeHeartbeat`), checked by the external watchdog
 
 ## Daemon (launchd)
 
@@ -66,6 +67,26 @@ sqlite3 kid-cal.db "SELECT * FROM processed_emails;"
 sqlite3 kid-cal.db "SELECT * FROM events;"
 sqlite3 kid-cal.db "SELECT * FROM sent_reminders;"
 ```
+
+## Watchdog (launchd)
+
+External liveness check — the daemon cannot alert on failures that stop it from starting.
+
+```bash
+# Install
+cp com.kid-cal-watchdog.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.kid-cal-watchdog.plist
+
+# Run a check by hand
+sh scripts/kid-cal-watchdog.sh
+
+# Status / logs
+launchctl list | grep kid-cal-watchdog
+tail -f kid-cal-watchdog.log
+```
+
+`scripts/kid-cal-watchdog.sh` is POSIX sh + curl by design — it must keep working when
+node_modules is missing, which is the failure it exists to catch. Do not add Node to it.
 
 ## Testing
 

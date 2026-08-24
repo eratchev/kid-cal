@@ -10,6 +10,7 @@ import { extractFromEmail } from './extraction/extractor.js';
 import { createCalendarEvent, createActionItemReminder } from './calendar/service.js';
 import { checkAndSendReminders } from './reminders/scheduler.js';
 import { sendNotification } from './reminders/telegram.js';
+import { writeHeartbeat } from './heartbeat.js';
 import { pathToFileURL } from 'url';
 
 const MAX_RETRIES = 3;
@@ -387,6 +388,10 @@ async function main(): Promise<void> {
     } catch (error) {
       logger.error({ error }, 'Reminder check failed');
     }
+
+    // Record liveness for the watchdog, whatever happened above: the daemon is cycling.
+    // Failures within a cycle have their own alerting.
+    writeHeartbeat();
 
     // Wait for next poll cycle
     if (running) {

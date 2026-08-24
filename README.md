@@ -99,6 +99,7 @@ A scheduler runs every N minutes and sends Telegram notifications for action ite
 - Exponential backoff (1s → 4s → 16s) on all external calls
 - Orphaned event retry — DB records without `calendar_event_id` are retried each cycle
 - Graceful shutdown on `SIGTERM`/`SIGINT` with IMAP disconnect and DB close, both failure-tolerant so a signal always exits 0
+- External watchdog — a dependency-free shell job alerts via Telegram if the daemon stops running or stops cycling
 - IMAP failure alerting via Telegram after 3 consecutive failures
 
 ---
@@ -179,6 +180,7 @@ cp .env.example .env
 | `TIMEZONE` | | Default: `America/New_York` |
 | `MORNING_REMINDER_HOUR` | | Hour for morning reminders (default: `7`) |
 | `DB_PATH` | | Default: `./kid-cal.db` |
+| `HEARTBEAT_PATH` | | Liveness file read by the watchdog (default: `./kid-cal.heartbeat`) |
 | `LOG_LEVEL` | | `trace/debug/info/warn/error/fatal` (default: `info`) |
 
 ### Commands
@@ -216,6 +218,36 @@ tail -f kid-cal-error.log     # stderr
 
 # Uninstall
 launchctl unload ~/Library/LaunchAgents/com.kid-cal.plist
+```
+
+---
+
+## Watchdog
+
+The daemon can only alert you while it is running. A process that cannot start cannot report
+that it cannot start — so liveness is checked from outside, by a separate `launchd` job.
+
+`scripts/kid-cal-watchdog.sh` runs every 15 minutes and sends a Telegram alert when:
+
+- the `com.kid-cal` job is not loaded in `launchd`
+- the job is loaded but has no PID (crash-looping) — reports the last exit status
+- the job is running but has not written a heartbeat in over an hour (hung)
+
+It is POSIX `sh` + `curl` only, with no Node or `node_modules` dependency — that is the point,
+since the failure it guards against is a daemon that cannot load its dependencies. Repeat
+alerts are throttled to one per 12 hours, a recovery message is sent once the daemon is
+healthy again, and staleness is not reported when the machine has simply been asleep.
+
+```bash
+# Install
+cp com.kid-cal-watchdog.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.kid-cal-watchdog.plist
+
+# Run a check by hand
+sh scripts/kid-cal-watchdog.sh && echo "no problem detected"
+
+# Uninstall
+launchctl unload ~/Library/LaunchAgents/com.kid-cal-watchdog.plist
 ```
 
 ---
