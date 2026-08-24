@@ -8,11 +8,8 @@ import type {
   ReminderType,
   DueReminder,
 } from '../types.js';
+import { formatInTimeZone } from 'date-fns-tz';
 import { getLogger } from '../logger.js';
-
-function calcDaysUntil(target: Date, now: Date): number {
-  return Math.floor((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-}
 
 export class StateManager {
   private db: Database.Database;
@@ -138,17 +135,14 @@ export class StateManager {
     return false;
   }
 
-  private pushDueReminders(
+  private pushIfUnsent(
     into: DueReminder[],
-    checks: { type: ReminderType; condition: boolean }[],
+    reminder: DueReminder,
     eventId: number | null,
     actionItemId: number | null,
-    base: Omit<DueReminder, 'reminderType'>,
   ): void {
-    for (const check of checks) {
-      if (check.condition && !this.isReminderSent(eventId, actionItemId, check.type)) {
-        into.push({ ...base, reminderType: check.type });
-      }
+    if (!this.isReminderSent(eventId, actionItemId, reminder.reminderType)) {
+      into.push(reminder);
     }
   }
 
@@ -164,23 +158,26 @@ export class StateManager {
     `).run(eventId, actionItemId, reminderType, notificationSid);
   }
 
-  getUpcomingEvents(withinDays: number): StoredEvent[] {
+  /**
+   * Events on a given calendar day, e.g. '2026-03-15'.
+   *
+   * Stored dates are naive local ISO strings in the school's timezone, so matching on the
+   * date part is exact — no instant arithmetic and no dependence on the host's timezone.
+   */
+  private getEventsOnDay(day: string): StoredEvent[] {
     return this.db.prepare(`
       SELECT * FROM events
-      WHERE start_date >= strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')
-        AND start_date <= strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime', ? || ' days')
+      WHERE DATE(start_date) = ?
       ORDER BY start_date ASC
-    `).all(withinDays) as StoredEvent[];
+    `).all(day) as StoredEvent[];
   }
 
-  getUpcomingActionItems(withinDays: number): StoredActionItem[] {
+  private getActionItemsDueOnDay(day: string): StoredActionItem[] {
     return this.db.prepare(`
       SELECT * FROM action_items
-      WHERE deadline IS NOT NULL
-        AND deadline >= strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')
-        AND deadline <= strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime', ? || ' days')
+      WHERE deadline IS NOT NULL AND DATE(deadline) = ?
       ORDER BY deadline ASC
-    `).all(withinDays) as StoredActionItem[];
+    `).all(day) as StoredActionItem[];
   }
 
   private getEventsInMinuteWindow(fromMinutes: number, toMinutes: number): StoredEvent[] {
@@ -215,57 +212,54 @@ export class StateManager {
   getDueReminders(now: Date, timezone: string): DueReminder[] {
     const reminders: DueReminder[] = [];
 
-    // Get events within the next day (morning_of only)
-    const events = this.getUpcomingEvents(1);
-    for (const event of events) {
-      const days = calcDaysUntil(new Date(event.start_date), now);
-      this.pushDueReminders(reminders, [
-        { type: 'morning_of', condition: days <= 0 && days > -1 },
-      ], event.id, null, {
+    // "Today" is the calendar day in the school's timezone — not the host's, and not UTC.
+    // Stored dates are naive local ISO strings in that same timezone, so a day-to-day
+    // comparison is exact. The previous "within 24 hours" test announced tomorrow's events
+    // as happening today, and then suppressed the reminder on the day itself.
+    const today = formatInTimeZone(now, timezone, 'yyyy-MM-dd');
+
+    for (const event of this.getEventsOnDay(today)) {
+      this.pushIfUnsent(reminders, {
         type: 'event',
+        reminderType: 'morning_of',
         itemId: event.id,
         title: event.title,
         description: event.description,
         date: event.start_date,
         location: event.location,
-      });
+      }, event.id, null);
     }
 
-    // Get action items within the next day (deadline_today only)
-    const actionItems = this.getUpcomingActionItems(1);
-    for (const item of actionItems) {
-      if (!item.deadline) continue;
-      const days = calcDaysUntil(new Date(item.deadline), now);
-      this.pushDueReminders(reminders, [
-        { type: 'deadline_today', condition: days <= 0 && days > -1 },
-      ], null, item.id, {
+    for (const item of this.getActionItemsDueOnDay(today)) {
+      this.pushIfUnsent(reminders, {
         type: 'action_item',
+        reminderType: 'deadline_today',
         itemId: item.id,
         title: item.title,
         description: item.description,
-        date: item.deadline,
+        date: item.deadline!,
         location: null,
-      });
+      }, null, item.id);
     }
 
-    // fifteen_min_before: timed events starting within next 20 min or up to 30 min ago.
+    // fifteen_min_before: timed events starting within the next 20 min or up to 30 min ago.
     // The SQL window is a coarse filter; the minutesUntil check is defense-in-depth using
     // JS Date arithmetic (both use local time via new Date(unzoned string)).
     // nowSec truncates sub-second precision to match the second-level resolution of stored start_date strings.
     const nowSec = Math.floor(now.getTime() / 1000) * 1000;
-    const nearEvents = this.getEventsInMinuteWindow(-30, 20);
-    for (const event of nearEvents) {
+    for (const event of this.getEventsInMinuteWindow(-30, 20)) {
       const minutesUntil = (new Date(event.start_date).getTime() - nowSec) / 60_000;
-      this.pushDueReminders(reminders, [
-        { type: 'fifteen_min_before', condition: minutesUntil >= -30 && minutesUntil <= 20 },
-      ], event.id, null, {
+      if (minutesUntil < -30 || minutesUntil > 20) continue;
+
+      this.pushIfUnsent(reminders, {
         type: 'event',
+        reminderType: 'fifteen_min_before',
         itemId: event.id,
         title: event.title,
         description: event.description,
         date: event.start_date,
         location: event.location,
-      });
+      }, event.id, null);
     }
 
     return reminders;

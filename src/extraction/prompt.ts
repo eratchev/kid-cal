@@ -1,3 +1,4 @@
+import { formatInTimeZone } from 'date-fns-tz';
 import type { ParsedEmail } from '../types.js';
 
 export function buildSystemPrompt(childGrade: string): string {
@@ -37,11 +38,13 @@ Skip events that are clearly targeted at other grades (e.g., "kindergarten field
 }
 
 export function buildUserPrompt(email: ParsedEmail, timezone: string): string {
-  return `Today's date: ${new Date().toISOString().split('T')[0]}
+  // Both dates are rendered in the reader's timezone. Using UTC here told Claude it was
+  // already tomorrow every evening, which resolved relative dates ("this Friday") a day late.
+  return `Today's date: ${formatInTimeZone(new Date(), timezone, 'yyyy-MM-dd')}
 Timezone: ${timezone}
 Email from: ${email.from}
 Email subject: ${email.subject}
-Email date: ${email.date.toISOString()}
+Email date: ${formatInTimeZone(email.date, timezone, "yyyy-MM-dd'T'HH:mm:ssXXX")}
 
 --- EMAIL CONTENT ---
 ${email.cleanText || email.textBody}
