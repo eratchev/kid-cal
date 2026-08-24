@@ -9,7 +9,8 @@ set -u
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$REPO_DIR/.env"
 STATE_FILE="$REPO_DIR/.kid-cal-watchdog.state"
-LABEL="com.kid-cal"
+LABEL="com.kid-cal"          # launchd (macOS)
+UNIT="kid-cal.service"       # systemd (Linux)
 
 # Heartbeat is written every POLL_INTERVAL_MINUTES (default 5), so an hour is 12 missed cycles.
 STALE_SECONDS="${KID_CAL_STALE_SECONDS:-3600}"
@@ -46,6 +47,41 @@ notify() {
     || echo "watchdog: failed to send Telegram alert" >&2
 }
 
+# Echo the daemon's state as "<missing|stopped|running> <pid> <exit>", so the checks below
+# read the same on macOS and Linux. '-' means "not applicable".
+service_state() {
+  if command -v launchctl >/dev/null 2>&1; then
+    job=$(launchctl list "$LABEL" 2>/dev/null) || { echo "missing - -"; return; }
+    pid=$(printf '%s\n' "$job" | sed -n 's/.*"PID" = \([0-9]*\).*/\1/p')
+    status=$(printf '%s\n' "$job" | sed -n 's/.*"LastExitStatus" = \([0-9]*\).*/\1/p')
+    if [ -n "$pid" ]; then echo "running $pid ${status:--}"; else echo "stopped - ${status:--}"; fi
+  elif command -v systemctl >/dev/null 2>&1; then
+    show=$(systemctl --user show "$UNIT" -p LoadState -p ActiveState -p MainPID -p ExecMainStatus 2>/dev/null) \
+      || { echo "missing - -"; return; }
+    load=$(printf '%s\n' "$show" | sed -n 's/^LoadState=//p')
+    active=$(printf '%s\n' "$show" | sed -n 's/^ActiveState=//p')
+    pid=$(printf '%s\n' "$show" | sed -n 's/^MainPID=//p')
+    status=$(printf '%s\n' "$show" | sed -n 's/^ExecMainStatus=//p')
+    if [ "$load" = "not-found" ] || [ -z "$load" ]; then echo "missing - -"; return; fi
+    if [ "$active" = "active" ] && [ "${pid:-0}" != "0" ]; then
+      echo "running $pid ${status:--}"
+    else
+      echo "stopped - ${status:--}"
+    fi
+  else
+    echo "missing - -"
+  fi
+}
+
+# Where to tell the reader to look, and how to bring the daemon back.
+if command -v launchctl >/dev/null 2>&1; then
+  LOG_HINT="check kid-cal-error.log"
+  LOAD_HINT="launchctl load ~/Library/LaunchAgents/$LABEL.plist"
+else
+  LOG_HINT="check: journalctl --user -u $UNIT -n 50"
+  LOAD_HINT="systemctl --user enable --now $UNIT"
+fi
+
 # State file holds: "<epoch of last alert> <epoch of last run>"
 last_alert=0
 last_run=0
@@ -64,15 +100,16 @@ fi
 
 problem=""
 
-job=$(launchctl list "$LABEL" 2>/dev/null) || job=""
-if [ -z "$job" ]; then
-  problem="kid-cal is not loaded in launchd. Run: launchctl load ~/Library/LaunchAgents/$LABEL.plist"
-else
-  pid=$(printf '%s\n' "$job" | sed -n 's/.*"PID" = \([0-9]*\).*/\1/p')
-  exit_status=$(printf '%s\n' "$job" | sed -n 's/.*"LastExitStatus" = \([0-9]*\).*/\1/p')
+# Splitting the three fields into $1 $2 $3 is the point here.
+# shellcheck disable=SC2046
+set -- $(service_state)
+state=$1; pid=$2; exit_status=$3
 
-  if [ -z "$pid" ]; then
-    problem="kid-cal is not running (last exit status ${exit_status:-unknown}). Most likely crash-looping — check kid-cal-error.log."
+if [ "$state" = "missing" ]; then
+  problem="kid-cal is not installed as a service. Run: $LOAD_HINT"
+else
+  if [ "$state" = "stopped" ]; then
+    problem="kid-cal is not running (last exit status ${exit_status}). Most likely crash-looping — $LOG_HINT."
   elif [ "$slept" -eq 0 ]; then
     if [ ! -f "$HEARTBEAT_PATH" ]; then
       problem="kid-cal is running (pid $pid) but has never written a heartbeat."

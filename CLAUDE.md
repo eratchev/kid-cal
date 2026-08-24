@@ -72,7 +72,32 @@ sqlite3 kid-cal.db "SELECT * FROM events;"
 sqlite3 kid-cal.db "SELECT * FROM sent_reminders;"
 ```
 
-## Watchdog (launchd)
+## Daemon (Linux systemd)
+
+User units in `systemd/` — no root needed. `%h` expands to the home directory; lingering
+(`loginctl enable-linger "$USER"`) makes them start at boot without a login.
+
+```bash
+# Install
+cp systemd/*.service systemd/*.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now kid-cal.service kid-cal-watchdog.timer
+
+# Start/stop/restart/status
+systemctl --user restart kid-cal
+systemctl --user status kid-cal
+
+# Rebuild and restart after code changes
+npm run build && systemctl --user restart kid-cal
+
+# Logs (journald — rotates itself, no log files)
+npm run logs
+journalctl --user -u kid-cal -f
+```
+
+`ExecStart` uses `%h/.local/node/bin/node`; change that line if Node lives elsewhere.
+
+## Watchdog (launchd + systemd)
 
 External liveness check — the daemon cannot alert on failures that stop it from starting.
 
@@ -89,7 +114,8 @@ launchctl list | grep kid-cal-watchdog
 tail -f kid-cal-watchdog.log
 ```
 
-`scripts/kid-cal-watchdog.sh` is POSIX sh + curl by design — it must keep working when
+`scripts/kid-cal-watchdog.sh` detects launchd vs systemd at runtime — one script, both
+platforms. It is POSIX sh + curl by design — it must keep working when
 node_modules is missing, which is the failure it exists to catch. Do not add Node to it.
 
 ## Testing

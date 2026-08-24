@@ -1,0 +1,24 @@
+[Unit]
+Description=kid-cal — school email to Google Calendar and Telegram reminders
+Documentation=https://github.com/eratchev/kid-cal
+After=network-online.target
+Wants=network-online.target
+# Back off instead of spinning: a startup failure that cannot be fixed by retrying
+# (a broken install, say) should stop, not restart forever. The macOS original had no
+# such limit and restarted 309,327 times over 85 days.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/personal/kid-cal
+ExecStart=%h/.local/node/bin/node dist/index.js
+Restart=on-failure
+RestartSec=30
+# The journal rotates on its own, so there are no log files to grow unbounded.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kid-cal
+
+[Install]
+WantedBy=default.target

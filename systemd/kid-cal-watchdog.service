@@ -1,0 +1,9 @@
+[Unit]
+Description=kid-cal watchdog — alert when the daemon is not running or has stopped cycling
+Documentation=https://github.com/eratchev/kid-cal
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/projects/personal/kid-cal
+ExecStart=/bin/sh %h/projects/personal/kid-cal/scripts/kid-cal-watchdog.sh
+SyslogIdentifier=kid-cal-watchdog

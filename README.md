@@ -226,15 +226,62 @@ launchctl unload ~/Library/LaunchAgents/com.kid-cal.plist
 
 ---
 
+## Daemon (Linux systemd)
+
+Unit files live in `systemd/`. They are **user** units, so no root is needed — `%h` expands
+to the home directory, and lingering makes them start at boot without a login.
+
+```bash
+# Install
+loginctl enable-linger "$USER"
+mkdir -p ~/.config/systemd/user
+cp systemd/kid-cal.service systemd/kid-cal-watchdog.service systemd/kid-cal-watchdog.timer \
+   ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now kid-cal.service
+systemctl --user enable --now kid-cal-watchdog.timer
+
+# Start / stop / restart
+systemctl --user start kid-cal
+systemctl --user stop kid-cal
+systemctl --user restart kid-cal
+
+# Status
+systemctl --user status kid-cal
+systemctl --user list-timers kid-cal-watchdog.timer
+
+# Rebuild and restart after code changes
+npm run build && systemctl --user restart kid-cal
+
+# Logs — journald rotates them, so there are no log files to manage
+npm run logs                              # readable live tail, reads the journal
+npm run logs:errors                       # errors only
+journalctl --user -u kid-cal -f           # raw
+
+# Uninstall
+systemctl --user disable --now kid-cal.service kid-cal-watchdog.timer
+```
+
+`ExecStart` points at `%h/.local/node/bin/node`. If Node is installed elsewhere (`apt install
+nodejs` puts it at `/usr/bin/node`), change that one line and `daemon-reload`.
+
+Set the host timezone with `timedatectl set-timezone <zone>` so journal timestamps read
+locally. Reminder correctness does **not** depend on it — every reminder path resolves
+against `TIMEZONE` from `.env`, and the test suite is run under several host timezones to
+keep it that way.
+
+---
+
 ## Watchdog
 
 The daemon can only alert you while it is running. A process that cannot start cannot report
 that it cannot start — so liveness is checked from outside, by a separate `launchd` job.
 
-`scripts/kid-cal-watchdog.sh` runs every 15 minutes and sends a Telegram alert when:
+`scripts/kid-cal-watchdog.sh` runs every 15 minutes — from a `launchd` job on macOS or a
+`systemd` timer on Linux — and sends a Telegram alert when:
 
-- the `com.kid-cal` job is not loaded in `launchd`
-- the job is loaded but has no PID (crash-looping) — reports the last exit status
+- the service is not installed (`launchctl`/`systemctl` does not know it)
+- it is installed but not running (crash-looping) — reports the last exit status
 - the job is running but has not written a heartbeat in over an hour (hung)
 
 It is POSIX `sh` + `curl` only, with no Node or `node_modules` dependency — that is the point,
