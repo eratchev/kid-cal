@@ -98,7 +98,7 @@ A scheduler runs every N minutes and sends Telegram notifications for action ite
 
 - Exponential backoff (1s → 4s → 16s) on all external calls
 - Orphaned event retry — DB records without `calendar_event_id` are retried each cycle
-- Graceful shutdown on `SIGTERM`/`SIGINT` with IMAP disconnect and DB close
+- Graceful shutdown on `SIGTERM`/`SIGINT` with IMAP disconnect and DB close, both failure-tolerant so a signal always exits 0
 - IMAP failure alerting via Telegram after 3 consecutive failures
 
 ---

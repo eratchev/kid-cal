@@ -50,16 +50,17 @@ vi.mock('../src/reminders/telegram.js', () => ({
   sendNotification: (...args: unknown[]) => mockSendNotification(...args),
 }));
 
+const mockCloseDatabase = vi.fn();
 vi.mock('../src/state/database.js', () => ({
   getDatabase: vi.fn(),
-  closeDatabase: vi.fn(),
+  closeDatabase: () => mockCloseDatabase(),
   initializeSchema: vi.fn(),
 }));
 vi.mock('../src/state/migrations.js', () => ({
   runMigrations: vi.fn(),
 }));
 
-import { processEmails, withRetry, clearSkippedNonSchoolIds } from '../src/index.js';
+import { processEmails, withRetry, clearSkippedNonSchoolIds, shutdown, resetShutdownState } from '../src/index.js';
 import type { EmailPoller } from '../src/email/poller.js';
 import type { StateManager } from '../src/state/manager.js';
 
@@ -393,5 +394,51 @@ describe('withRetry', () => {
     // maxRetries=0 means only 1 attempt, no delay
     await expect(withRetry(fn, 'test', 0)).rejects.toThrow('always fails');
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('shutdown', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetShutdownState();
+  });
+
+  it('disconnects IMAP and closes the database', async () => {
+    const poller = makePoller();
+
+    await shutdown(poller, 'SIGTERM');
+
+    expect(poller.disconnect).toHaveBeenCalled();
+    expect(mockCloseDatabase).toHaveBeenCalled();
+  });
+
+  // Regression: a SIGTERM against an already-dead IMAP socket made logout() throw.
+  // The rejection escaped the signal handler, so the process exited 1 with the DB
+  // still open (leaving an un-checkpointed WAL) and launchd restarted it.
+  it('still closes the database when IMAP disconnect throws', async () => {
+    const poller = makePoller({
+      disconnect: vi.fn().mockRejectedValue(new Error('Connection not available')),
+    });
+
+    await expect(shutdown(poller, 'SIGTERM')).resolves.toBeUndefined();
+    expect(mockCloseDatabase).toHaveBeenCalled();
+  });
+
+  it('does not reject when closing the database throws', async () => {
+    const poller = makePoller();
+    mockCloseDatabase.mockImplementationOnce(() => {
+      throw new Error('db close failed');
+    });
+
+    await expect(shutdown(poller, 'SIGINT')).resolves.toBeUndefined();
+  });
+
+  it('is idempotent when a second signal arrives mid-shutdown', async () => {
+    const poller = makePoller();
+
+    await Promise.all([shutdown(poller, 'SIGTERM'), shutdown(poller, 'SIGINT')]);
+
+    expect(poller.disconnect).toHaveBeenCalledTimes(1);
+    expect(mockCloseDatabase).toHaveBeenCalledTimes(1);
   });
 });

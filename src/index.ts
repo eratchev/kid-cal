@@ -10,6 +10,7 @@ import { extractFromEmail } from './extraction/extractor.js';
 import { createCalendarEvent, createActionItemReminder } from './calendar/service.js';
 import { checkAndSendReminders } from './reminders/scheduler.js';
 import { sendNotification } from './reminders/telegram.js';
+import { pathToFileURL } from 'url';
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
@@ -270,6 +271,43 @@ export async function retryOrphanedCalendarEvents(stateManager: StateManager): P
   }
 }
 
+let shutdownStarted = false;
+
+/** Reset the shutdown guard (used in tests). */
+export function resetShutdownState(): void {
+  shutdownStarted = false;
+}
+
+/**
+ * Release resources on the way out.
+ *
+ * Never throws. This runs from a signal handler, where an escaping rejection would exit
+ * the process non-zero — which skips the database close (leaving an un-checkpointed WAL)
+ * and makes launchd's KeepAlive treat a clean stop as a crash and restart us.
+ */
+export async function shutdown(poller: EmailPoller, signal: string): Promise<void> {
+  const logger = getLogger();
+
+  if (shutdownStarted) {
+    logger.info({ signal }, 'Shutdown already in progress, ignoring signal');
+    return;
+  }
+  shutdownStarted = true;
+  logger.info({ signal }, 'Shutting down');
+
+  try {
+    await poller.disconnect();
+  } catch (error) {
+    logger.warn({ error, signal }, 'IMAP disconnect failed during shutdown');
+  }
+
+  try {
+    closeDatabase();
+  } catch (error) {
+    logger.warn({ error, signal }, 'Database close failed during shutdown');
+  }
+}
+
 async function main(): Promise<void> {
   const config = getConfig();
   const logger = getLogger();
@@ -291,16 +329,21 @@ async function main(): Promise<void> {
   let running = true;
 
   // Graceful shutdown
-  const shutdown = async (signal: string) => {
-    logger.info({ signal }, 'Shutting down');
+  const handleSignal = (signal: string): void => {
     running = false;
-    await poller.disconnect();
-    closeDatabase();
-    process.exit(0);
+    shutdown(poller, signal).then(
+      () => process.exit(0),
+      (error) => {
+        // shutdown() swallows its own failures; this is a last-resort guard so that a
+        // signal handler can never terminate the process with an unhandled rejection.
+        console.error('Shutdown failed:', error);
+        process.exit(1);
+      },
+    );
   };
 
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => handleSignal('SIGINT'));
+  process.on('SIGTERM', () => handleSignal('SIGTERM'));
 
   // Main polling loop
   while (running) {
@@ -354,7 +397,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  console.error('Fatal error:', error);
-  process.exit(1);
-});
+const isEntrypoint =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isEntrypoint) {
+  main().catch((error) => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
+}
