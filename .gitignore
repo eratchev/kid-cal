@@ -9,3 +9,6 @@ dist/
 .claude/
 coverage/
 .worktrees/
+*.heartbeat
+*.heartbeat.tmp
+.kid-cal-watchdog.state

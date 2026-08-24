@@ -38,6 +38,9 @@ const configSchema = z.object({
   // Database
   DB_PATH: z.string().default('./kid-cal.db'),
 
+  // Liveness file written each poll cycle; read by scripts/kid-cal-watchdog.sh
+  HEARTBEAT_PATH: z.string().default('./kid-cal.heartbeat'),
+
   // Grade filtering
   CHILD_GRADE: z.string().default('5'),
   EXCLUDE_KEYWORDS: z.string().default('').transform((s) =>
