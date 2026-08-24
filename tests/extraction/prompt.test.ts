@@ -34,6 +34,15 @@ describe('buildSystemPrompt', () => {
     const prompt = buildSystemPrompt('3');
     expect(prompt).toContain('grade 3');
   });
+
+  // The rules used to frame middle school as an upcoming transition, which only made
+  // sense while the child was in 5th grade, and produced "3th grader" for other grades.
+  it('describes middle school as a grade range, not an upcoming transition', () => {
+    const prompt = buildSystemPrompt('6');
+    expect(prompt).toContain('grades 6-8');
+    expect(prompt).not.toContain('transition to middle school');
+    expect(prompt).not.toMatch(/\$\{?\w*\}?th grader/);
+  });
 });
 
 describe('buildUserPrompt', () => {

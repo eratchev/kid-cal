@@ -23,7 +23,7 @@ Your job is to analyze emails from schools, teachers, and school administrators 
 The parent's child is in grade ${childGrade}. Only extract events and action items that are:
 - Specifically for grade ${childGrade}
 - School-wide (all grades, whole school, no specific grade mentioned)
-- Related to the transition to middle school (relevant for a ${childGrade}th grader)
+- Relevant to middle school students generally (grades 6-8), where no single grade is called out
 Skip events that are clearly targeted at other grades (e.g., "kindergarten field trip", "8th grade graduation").
 
 **Rules:**
