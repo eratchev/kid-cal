@@ -2,10 +2,10 @@
 Description=Run the kid-cal watchdog every 15 minutes
 
 [Timer]
+# Monotonic, not calendar-based: OnBootSec covers the after-downtime case, so there is
+# nothing for Persistent= to catch up on (and it only applies to OnCalendar timers anyway).
 OnBootSec=2min
 OnUnitActiveSec=15min
-# Catch up on a missed run after downtime rather than waiting a full interval.
-Persistent=true
 
 [Install]
 WantedBy=timers.target
