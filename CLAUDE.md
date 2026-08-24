@@ -13,6 +13,8 @@ npm run build     # TypeScript compile
 npm run dev       # Run with tsx (dev)
 npm start         # Run compiled JS
 npm test          # Run vitest
+npm run logs      # Follow daemon log, human-readable (requires jq)
+npm run logs:errors   # Errors only (level>=50), whole history
 ```
 
 ## Project Structure
@@ -58,8 +60,10 @@ launchctl unload ~/Library/LaunchAgents/com.kid-cal.plist
 npm run build && launchctl stop com.kid-cal && launchctl start com.kid-cal
 
 # Logs
-tail -f kid-cal.log           # stdout
-tail -f kid-cal-error.log     # stderr
+npm run logs                  # readable live tail
+npm run logs:errors           # errors only
+tail -f kid-cal.log           # raw stdout (pino JSON)
+tail -f kid-cal-error.log     # stderr — should stay empty
 
 # Inspect database
 sqlite3 kid-cal.db ".headers on" ".mode column" "SELECT * FROM action_items;"

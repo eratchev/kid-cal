@@ -190,6 +190,8 @@ npm run build     # Compile TypeScript
 npm run dev       # Run with tsx (no compile step)
 npm start         # Run compiled JS
 npm test          # Run test suite
+npm run logs      # Follow the daemon log, human-readable
+npm run logs:errors   # Every error in the log's history
 ```
 
 ---
@@ -213,8 +215,10 @@ launchctl list | grep kid-cal
 npm run build && launchctl stop com.kid-cal && launchctl start com.kid-cal
 
 # Logs
-tail -f kid-cal.log           # stdout
-tail -f kid-cal-error.log     # stderr
+npm run logs                  # readable live tail (requires jq)
+npm run logs:errors           # errors only, whole history
+tail -f kid-cal.log           # raw stdout (pino JSON)
+tail -f kid-cal-error.log     # stderr — should stay empty
 
 # Uninstall
 launchctl unload ~/Library/LaunchAgents/com.kid-cal.plist

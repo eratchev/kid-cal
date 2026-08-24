@@ -1,0 +1,46 @@
+#!/bin/sh
+# Human-readable views over kid-cal's pino JSON log.
+#
+#   scripts/logs.sh          follow the log live
+#   scripts/logs.sh errors   every error in the history
+#
+# Wired up as `npm run logs` and `npm run logs:errors`.
+set -u
+
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+LOG_FILE="${KID_CAL_LOG:-$REPO_DIR/kid-cal.log}"
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "logs: jq is required (brew install jq)" >&2
+  exit 1
+fi
+
+if [ ! -f "$LOG_FILE" ]; then
+  echo "logs: $LOG_FILE does not exist — has the daemon ever run?" >&2
+  exit 1
+fi
+
+STAMP='.time/1000|strflocaltime("%m-%d %H:%M:%S")'
+LEVEL='{"10":"TRACE","20":"DEBUG","30":"INFO ","40":"WARN ","50":"ERROR","60":"FATAL"}[.level|tostring]//"?"'
+
+case "${1:-follow}" in
+  follow)
+    tail -n 40 -f "$LOG_FILE" | jq --unbuffered -r "
+      ($STAMP) + \" \" + ($LEVEL) + \" \" + .msg
+      + (if .count != null then \" (count=\\(.count))\" else \"\" end)
+      + (if .title then \" — \\(.title)\" else \"\" end)"
+    ;;
+  errors)
+    # Level 50+ only. Yahoo drops the idle IMAP connection between polls, so the
+    # "IMAP connection error (will reconnect on next cycle)" warning is routine
+    # level-40 noise that always ends in a successful reconnect and fetch.
+    jq -r "
+      select(.level >= 50)
+      | ($STAMP) + \" \" + ($LEVEL) + \" \" + .msg
+      + (if .error.message then \"  \\(.error.message)\" else \"\" end)" "$LOG_FILE"
+    ;;
+  *)
+    echo "usage: $(basename "$0") [follow|errors]" >&2
+    exit 2
+    ;;
+esac
